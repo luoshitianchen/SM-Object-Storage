@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from app import base
 
 SERVICE = "sm-object-storage"
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 NAME = "SM Object Storage"
 DESCRIPTION = "企业对象存储：桶、对象存取、元数据与 SM3 完整性校验"
 PORT = 8420
@@ -26,6 +26,19 @@ def _now() -> str:
 
 def storage_dir() -> Path:
     return Path(os.getenv("SM_STORAGE_DIR", "data/objects"))
+
+
+def _safe_object_path(bucket: str, object_key: str) -> Path:
+    """对象键经规范化后必须位于存储根/桶目录内，杜绝路径遍历（任意文件读写删）。"""
+    if not object_key or "\x00" in object_key:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "非法的对象键")
+    if any(seg in ("", ".", "..") for seg in object_key.replace("\\", "/").split("/")):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "非法的对象键")
+    base_dir = (storage_dir() / bucket).resolve()
+    target = (base_dir / object_key).resolve()
+    if target != base_dir and base_dir not in target.parents:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "非法的对象键")
+    return target
 
 
 def _init() -> None:
@@ -106,7 +119,7 @@ async def put_object(bucket: str, object_key: str, request: Request) -> dict[str
             (obj_id, bucket, object_key, len(body), digest, content_type, _now()),
         )
         base.record_audit("object.put", "internal", f"bucket={bucket} key={object_key} bytes={len(body)}", getattr(request.state, "request_id", ""), getattr(request.state, "trace_id", ""), SERVICE)
-    target = storage_dir() / bucket / object_key
+    target = _safe_object_path(bucket, object_key)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(body)
     return {"bucket": bucket, "key": object_key, "size": len(body), "sm3": digest, "etag": digest[:16]}
@@ -114,7 +127,7 @@ async def put_object(bucket: str, object_key: str, request: Request) -> dict[str
 
 @app.get("/api/storage/buckets/{bucket}/objects/{object_key:path}")
 def get_object(bucket: str, object_key: str) -> Response:
-    target = storage_dir() / bucket / object_key
+    target = _safe_object_path(bucket, object_key)
     if not target.is_file():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "对象不存在")
     with base.db_ctx() as conn:
@@ -139,7 +152,7 @@ def delete_object(bucket: str, object_key: str, request: Request) -> dict[str, A
         if conn.execute("DELETE FROM objects WHERE bucket=? AND key=?", (bucket, object_key)).rowcount == 0:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "对象不存在")
         base.record_audit("object.deleted", "internal", f"bucket={bucket} key={object_key}", getattr(request.state, "request_id", ""), getattr(request.state, "trace_id", ""), SERVICE)
-    target = storage_dir() / bucket / object_key
+    target = _safe_object_path(bucket, object_key)
     if target.is_file():
         target.unlink()
     return {"deleted": True, "bucket": bucket, "key": object_key}

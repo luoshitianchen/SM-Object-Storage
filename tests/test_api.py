@@ -57,6 +57,20 @@ def test_object_404(client):
     assert client.get("/api/storage/buckets/nonexist/objects/x.txt").status_code == 404
 
 
+def test_object_key_traversal_rejected(client):
+    """路径遍历（.. / 编码 .. / 反斜杠 / 绝对路径）必须被拒绝，杜绝任意文件读写删。"""
+    client.post("/api/storage/buckets", json={"name": "docs"})
+    # 客户端规范化后仍能到达处理器、必须返回 400 的形态
+    for key in ("..%2f..%2foutside.txt", "%2e%2e%2f%2e%2e%2foutside.txt", "..\\..\\win.txt", "a%2f..%2f..%2fx"):
+        r = client.put(f"/api/storage/buckets/docs/objects/{key}", content=b"x")
+        assert r.status_code == 400, f"PUT 应拒绝 {key!r}, got {r.status_code}"
+        g = client.get(f"/api/storage/buckets/docs/objects/{key}")
+        assert g.status_code in (400, 404), f"GET 应拒绝/未命中 {key!r}, got {g.status_code}"
+    # 字面 .. 会被 HTTP 客户端规范化导致路由不命中（404）——同样不可利用；绝对路径同理
+    for key in ("../outside.txt", "a/../../outside.txt", "/etc/passwd", "a/../../../tmp/x"):
+        assert client.put(f"/api/storage/buckets/docs/objects/{key}", content=b"x").status_code in (400, 404), key
+
+
 def test_status(client):
     client.post("/api/storage/buckets", json={"name": "docs"})
     client.put("/api/storage/buckets/docs/objects/a.txt", content=b"abc")
