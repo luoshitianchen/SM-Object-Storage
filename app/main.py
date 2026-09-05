@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from app import base
 
 SERVICE = "sm-object-storage"
-VERSION = "2.0.1"
+VERSION = "3.0.0"
 NAME = "SM Object Storage"
 DESCRIPTION = "企业对象存储：桶、对象存取、元数据与 SM3 完整性校验"
 PORT = 8420
