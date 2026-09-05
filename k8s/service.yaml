@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sm-object-storage
+  namespace: sm
+  labels:
+    app: sm-object-storage
+    platform: sm-suite
+spec:
+  type: ClusterIP
+  selector:
+    app: sm-object-storage
+  ports:
+  - name: http
+    port: 8420
+    targetPort: http
+    protocol: TCP
