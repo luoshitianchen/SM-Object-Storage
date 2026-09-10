@@ -1,16 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "SM-Object-Storage"
-version = "2.0.0"
-description = "企业对象存储：桶、对象存取、元数据与 SM3 完整性校验"
+name = "sm-service"
+version = "1.0.0"
 requires-python = ">=3.11"
 
 [tool.ruff]
-line-length = 200
+line-length = 120
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM"]
-ignore = ["E501"]
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+ignore = ["E501", "B008"]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-v --tb=short"
